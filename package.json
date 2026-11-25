@@ -1,5 +1,5 @@
 {
-    "name": "vencord-message-purger",
+    "name": "messagepurger",
     "version": "1.0.0",
     "description": "Vencord plugin that deletes your own messages in a private chat or a server text channel — filtered, paced, exportable first.",
     "license": "GPL-3.0-or-later",
@@ -26,6 +26,6 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/HajiLight/vencord-message-purger.git"
+        "url": "https://github.com/HajiLight/messagepurger.git"
     }
 }

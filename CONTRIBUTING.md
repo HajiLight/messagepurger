@@ -6,7 +6,7 @@
 git clone https://github.com/Vendicated/Vencord.git
 cd Vencord
 pnpm install --frozen-lockfile
-git clone https://github.com/HajiLight/vencord-message-purger.git src/userplugins/messagePurger
+git clone https://github.com/HajiLight/messagepurger.git src/userplugins/messagePurger
 pnpm build        # or: cd src/userplugins/messagePurger && node scripts/dev.mjs --build
 pnpm check        # typecheck + vitest
 ```

@@ -1,6 +1,6 @@
 # MessagePurger
 
-[![CI](https://github.com/HajiLight/vencord-message-purger/actions/workflows/ci.yml/badge.svg)](https://github.com/HajiLight/vencord-message-purger/actions/workflows/ci.yml)
+[![CI](https://github.com/HajiLight/messagepurger/actions/workflows/ci.yml/badge.svg)](https://github.com/HajiLight/messagepurger/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 A [Vencord](https://vencord.dev) userplugin that deletes **your own** messages in a private chat or a server text channel — filtered by date, text, or attachments, paced like a human, with an optional backup export first.
@@ -55,7 +55,7 @@ Requires Node.js 22+, pnpm, Git, and Vencord built from source:
 git clone https://github.com/Vendicated/Vencord.git
 cd Vencord
 pnpm install --frozen-lockfile
-git clone https://github.com/HajiLight/vencord-message-purger.git src/userplugins/messagePurger
+git clone https://github.com/HajiLight/messagepurger.git src/userplugins/messagePurger
 pnpm build
 pnpm inject
 ```
@@ -82,8 +82,8 @@ pnpm check                      # type check (skipped cleanly if Vencord is abse
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md) — every released version
-- [Releases](https://github.com/HajiLight/vencord-message-purger/releases) — release notes and downloads
-- [Issues](https://github.com/HajiLight/vencord-message-purger/issues) — bug reports and feature requests
+- [Releases](https://github.com/HajiLight/messagepurger/releases) — release notes and downloads
+- [Issues](https://github.com/HajiLight/messagepurger/issues) — bug reports and feature requests
 
 ## License
 

@@ -26,4 +26,4 @@ Use **Security → Report a vulnerability** (private advisory). If that is unava
 
 ## Supported versions
 
-1.x — the latest [release](https://github.com/HajiLight/vencord-message-purger/releases) and the latest commit on `main`. Older releases do not receive fixes.
+1.x — the latest [release](https://github.com/HajiLight/messagepurger/releases) and the latest commit on `main`. Older releases do not receive fixes.
