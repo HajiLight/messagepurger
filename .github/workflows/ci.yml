@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # The plugin imports Vencord's @api/@utils aliases, so the real project is needed
+      # for the type check and the build. Pinned to the tested Vencord release (v1.15.19).
+      - name: Clone Vencord
+        run: |
+          git init --quiet .vencord
+          git -C .vencord remote add origin https://github.com/Vendicated/Vencord.git
+          git -C .vencord fetch --depth 1 origin d086992fb674299a2fa05ac6432edc3a777389f3
+          git -C .vencord checkout --quiet --detach FETCH_HEAD
+
+      - name: Install Vencord dependencies
+        run: pnpm install --frozen-lockfile --dir .vencord
+
+      - name: Install plugin dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

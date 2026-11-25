@@ -1,0 +1,96 @@
+name: Bug report
+description: Something does not work as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste your Discord token, cookies or login data. A message ID, a screenshot of the
+        plugin panel and the console output are enough.
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: Plugin version
+      description: "From package.json / the Vencord plugin card"
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: discord-build
+    attributes:
+      label: Discord build number
+      description: "Discord console (`Ctrl+Shift+I`), run `GLOBAL_ENV.BUILD_NUMBER`."
+      placeholder: "123456789"
+    validations:
+      required: true
+
+  - type: input
+    id: vencord-commit
+    attributes:
+      label: Vencord commit
+      description: "`git -C Vencord rev-parse --short HEAD`"
+      placeholder: "795ed0ff"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options:
+        - Discord Stable (injected)
+        - Discord Canary (injected)
+        - Vesktop
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output
+      description: Anything prefixed with `[MessagePurger]`, plus any 429 or HTTP status you saw.
+      render: shell
+
+  - type: dropdown
+    id: data-loss
+    attributes:
+      label: Did anything get deleted unexpectedly?
+      description: |
+        This plugin deletes irreversibly. If messages disappeared that you did not expect, say so
+        here — it changes the severity of the report. Do not paste message text.
+      options:
+        - "No — this is about the UI, a filter or an export"
+        - "Yes — more messages than the panel showed"
+        - "Yes — messages from the wrong chat or range"
+        - "Yes — deleted without the backup I expected"
+    validations:
+      required: true
+
+  - type: input
+    id: backup-existed
+    attributes:
+      label: Did a backup file exist before the deletion?
+      description: "The panel says 'Offered …' rather than 'Saved' — check the files, do not assume."
+      placeholder: "yes, messages-<chat>-<range>.jsonl + .txt / no"
+    validations:
+      required: true
+
+  - type: textarea
+    id: panel-note
+    attributes:
+      label: The exact text the panel showed
+      description: "Counts only — the note never contains message content."
+      placeholder: "About to delete 300 of your messages. Press Start again to confirm."
+    validations:
+      required: false
