@@ -173,6 +173,39 @@ describe("MessagePurger plugin (index.tsx)", () => {
             expect(st.note).toContain("2 messages in range — 1 yours, 1 from the other side.");
         });
 
+        it("says how many call entries were skipped", async () => {
+            mockDiscord.fetchWindow.mockResolvedValueOnce([
+                {
+                    id: "call",
+                    authorId: "111111111111111111",
+                    authorName: "HajiLight",
+                    timestamp: 1709640000000,
+                    content: "",
+                    attachments: [],
+                    embedCount: 0,
+                    type: 3
+                },
+                {
+                    id: "msg1",
+                    authorId: "111111111111111111",
+                    authorName: "HajiLight",
+                    timestamp: 1709640001000,
+                    content: "mine",
+                    attachments: [],
+                    embedCount: 0,
+                    type: 0
+                }
+            ]);
+
+            const ok = await plugin.scan();
+            expect(ok).toBe(true);
+
+            const st = plugin.getState();
+            expect(st.total).toBe(2);
+            expect(st.skipped).toBe(1);
+            expect(st.note).toContain("1 call message among yours is skipped — not in the delete count.");
+        });
+
         it("handles 0 messages found", async () => {
             mockDiscord.fetchWindow.mockResolvedValueOnce([]);
             const ok = await plugin.scan();
@@ -608,6 +641,37 @@ describe("MessagePurger plugin (index.tsx)", () => {
             expect(st.note).toContain("Finished — 2 deleted, 0 already gone, 0 refused, 0 failed.");
             expect(st.note).toContain("Verified: nothing of yours matching that range is left.");
             expect(mockDiscord.fetchWindow).toHaveBeenCalledTimes(2);
+        });
+
+        it("does not claim the range is empty while a call entry remains", async () => {
+            settingsStore.mode = "deleteOnly";
+            settingsStore.verifyAfterRun = true;
+            const call = { id: "call", authorId: "111111111111111111", authorName: "HajiLight", timestamp: 2, content: "", attachments: [], embedCount: 0, type: 3 };
+            mockDiscord.fetchWindow
+                .mockResolvedValueOnce([
+                    { id: "m1", authorId: "111111111111111111", authorName: "HajiLight", timestamp: 1, content: "1", attachments: [], embedCount: 0, type: 0 },
+                    call
+                ])
+                .mockResolvedValueOnce([call]);
+
+            await plugin.scan();
+            await plugin.startRun();
+            await vi.advanceTimersByTimeAsync(2000);
+            mockDiscord.deleteMessage.mockResolvedValue({ outcome: "deleted", status: 204 });
+
+            const deletePromise = plugin.startRun();
+            await vi.runAllTimersAsync();
+            await deletePromise;
+
+            const st = plugin.getState();
+            expect(st.phase).toBe("done");
+            expect(st.deleted).toBe(1);
+            expect(st.skipped).toBe(1);
+            expect(st.note).toContain("Verified: nothing left to delete — 1 of your call messages left in the range");
+            expect(st.note).not.toContain("nothing of yours matching that range is left");
+            expect(mockDiscord.deleteMessage).toHaveBeenCalledTimes(1);
+            expect(mockDiscord.deleteMessage).toHaveBeenCalledWith(expect.any(String), "m1");
+            expect(mockDiscord.deleteMessage).not.toHaveBeenCalledWith(expect.any(String), "call");
         });
 
         it("retries a transport failure once and verifies what is still there", async () => {

@@ -7,6 +7,8 @@ import {
     type ChatMessage,
     clampDelay,
     classifyDeleteStatus,
+    CALL_MESSAGE_TYPE,
+    countCallMessages,
     DEFAULT_ARM_GATE,
     DEFAULT_PACER,
     dateFromSnowflake,
@@ -308,14 +310,30 @@ describe("isDeletable", () => {
         expect(isDeletable(message({ pinned: false }), SELF, true)).toBe(true);
     });
 
-    // There is no message-type whitelist on purpose: the earlier one skipped "system messages"
-    // because they were believed to answer 400, and a pin notice (type 6) was measured deleting
-    // with 204. Whatever Discord refuses, it refuses with a status the run counts as `failed`.
-    it("does not filter by message type", () => {
+    // A blanket type whitelist was wrong: pin notices (type 6) delete with 204. The exception is
+    // measured, not assumed — call entries are type 3, empty content and a `call` object, and the
+    // plugin does not queue them. Everything else is still attempted.
+    it("skips only measured call entries, not every non-default message type", () => {
         const withType = (type: number) => ({ ...message(), type }) as unknown as ChatMessage;
         expect(isDeletable(withType(0), SELF)).toBe(true);
-        expect(isDeletable(withType(3), SELF)).toBe(true);
+        expect(isDeletable(withType(CALL_MESSAGE_TYPE), SELF)).toBe(false);
         expect(isDeletable(withType(6), SELF)).toBe(true);
+    });
+
+    it("skips a call-shaped message even if the type mapping is missing", () => {
+        const callShaped = message({ type: undefined, hasCall: true });
+        expect(isDeletable(callShaped, SELF)).toBe(false);
+    });
+
+    it("counts own call entries in range, but never queues them", () => {
+        const messages = [
+            message({ id: "call", type: CALL_MESSAGE_TYPE, timestamp: 1000 }),
+            message({ id: "other-call", authorId: OTHER, type: CALL_MESSAGE_TYPE, timestamp: 2000 }),
+            message({ id: "normal", type: 0, timestamp: 3000 })
+        ];
+
+        expect(countCallMessages(messages, anyFilters, SELF)).toBe(1);
+        expect(buildDeleteQueue(messages, anyFilters, SELF, 0).map(m => m.id)).toEqual(["normal"]);
     });
 });
 
@@ -362,6 +380,17 @@ describe("buildDeleteQueue", () => {
         );
 
         expect(queue.map(m => m.id)).toEqual(["a", "b"]);
+    });
+
+    it("does not let a contradictory duplicate override a call marker in either order", () => {
+        expect(buildDeleteQueue([
+            message({ id: "same", type: CALL_MESSAGE_TYPE, timestamp: 1000 }),
+            message({ id: "same", type: 0, timestamp: 2000 })
+        ], anyFilters, SELF, 0)).toEqual([]);
+        expect(buildDeleteQueue([
+            message({ id: "same", type: 0, timestamp: 2000 }),
+            message({ id: "same", type: CALL_MESSAGE_TYPE, timestamp: 1000 })
+        ], anyFilters, SELF, 0)).toEqual([]);
     });
 
     it("treats a zero limit as no limit", () => {

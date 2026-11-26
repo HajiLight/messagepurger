@@ -15,6 +15,7 @@ import {
     buildDeleteQueue,
     type ChatMessage,
     clampDelay,
+    countCallMessages,
     type DeleteOutcome,
     type DeleteResult,
     DEFAULT_PACER,
@@ -48,6 +49,8 @@ interface RunState {
     forbidden: number;
     failed: number;
     throttled: number;
+    /** Own call entries in the range that were skipped and never queued. */
+    skipped: number;
     /** How many messages the armed confirmation would delete. */
     queued: number;
 }
@@ -61,6 +64,7 @@ const state: RunState = {
     forbidden: 0,
     failed: 0,
     throttled: 0,
+    skipped: 0,
     queued: 0
 };
 
@@ -230,9 +234,28 @@ function resetRun(phase: Phase, note: string) {
         forbidden: 0,
         failed: 0,
         throttled: 0,
+        skipped: 0,
         queued: 0
     });
     notify();
+}
+
+/** The panel says why a call entry is not in the queue; silence would look like a missed message. */
+function skippedCallsText(count: number): string {
+    if (count === 0) return "";
+    return ` ${count} call message${count === 1 ? "" : "s"} skipped — not in the delete count.`;
+}
+
+/** Derive the count from the live scan, so a reset note cannot leave a stale zero behind. */
+function skippedInScan(): number {
+    if (scanned === null) return 0;
+    const me = selfId();
+    return me === "" ? 0 : countCallMessages(scanned.messages, scanned.filters, me);
+}
+
+/** Same freshness rule for the total shown beside the backup offer. */
+function totalInScan(): number {
+    return scanned === null ? 0 : buildBackupSet(scanned.messages, scanned.filters).length;
 }
 
 /** The filters exactly as the settings describe them right now. */
@@ -313,6 +336,10 @@ async function scanCore(reason?: string): Promise<boolean> {
 
         const backup = buildBackupSet(messages, context.filters);
         const mine = backup.filter(message => message.authorId === me).length;
+        const skipped = countCallMessages(messages, context.filters, me);
+        const skippedNote = skipped > 0
+            ? ` ${skipped} call message${skipped === 1 ? " among yours is" : "s among yours are"} skipped — not in the delete count.`
+            : "";
 
         scanned = {
             messages,
@@ -321,8 +348,9 @@ async function scanCore(reason?: string): Promise<boolean> {
         };
         Object.assign(state, {
             phase: "ready",
-            note: `${context.label}: ${backup.length} messages in range — ${mine} yours, ${backup.length - mine} from the other side.`,
+            note: `${context.label}: ${backup.length} messages in range — ${mine} yours, ${backup.length - mine} from the other side.${skippedNote}`,
             total: backup.length,
+            skipped,
             queued: 0
         });
         notify();
@@ -430,7 +458,7 @@ async function runDeletion(queue: ChatMessage[], context: RunContext, me: string
     cancelRequested = false;
     gate.reset();
     armStamp = null;
-    Object.assign(state, { phase: "deleting", deleted: 0, gone: 0, forbidden: 0, failed: 0, throttled: 0, queued: queue.length });
+    Object.assign(state, { phase: "deleting", deleted: 0, gone: 0, forbidden: 0, failed: 0, throttled: 0, skipped: countCallMessages(scanned.messages, scanned.filters, me), queued: queue.length });
     notify();
 
     // A hand-edited settings value must not turn a slow run into a burst: `setTimeout` clamps NaN
@@ -539,7 +567,8 @@ async function runDeletion(queue: ChatMessage[], context: RunContext, me: string
 
     const progress = () =>
         `${state.deleted} deleted, ${state.gone} already gone, ${state.forbidden} refused, `
-        + `${state.failed} failed${state.throttled > 0 ? `, ${state.throttled} throttled` : ""}`;
+        + `${state.failed} failed${state.throttled > 0 ? `, ${state.throttled} throttled` : ""}`
+        + `${state.skipped > 0 ? `, ${state.skipped} call message${state.skipped === 1 ? "" : "s"} skipped` : ""}`;
 
     try {
         for (let index = 0; index < queue.length; index++) {
@@ -606,17 +635,22 @@ async function runDeletion(queue: ChatMessage[], context: RunContext, me: string
                     const allRemaining = buildDeleteQueue(remaining, context.filters, me, 0, false);
                     const stillThere = excludePinned ? allRemaining.filter(message => !message.pinned) : allRemaining;
                     const pinnedKept = allRemaining.length - stillThere.length;
+                    const callsRemaining = countCallMessages(remaining, context.filters, me);
+                    // The preview count is not the post-run count: a call can arrive during the run.
+                    // Keep the public counter aligned with the range this verification just read.
+                    state.skipped = callsRemaining;
                     const refusedLeft = stillThere.filter(message => refusedIds.has(message.id)).length;
                     const failedLeft = stillThere.filter(message => failedIds.has(message.id)).length;
                     const throttledLeft = stillThere.filter(message => throttledIds.has(message.id)).length;
                     const otherLeft = stillThere.length - refusedLeft - failedLeft - throttledLeft;
                     const withheldByCap = cappedRun ? Math.max(0, intended - queue.length) : 0;
                     const unexpectedLeft = Math.max(0, otherLeft - withheldByCap);
-                    // Pins are counted from this read, not from the queue: a pin added after the
-                    // preview was never seen by the setting, so the sentence must not claim it was.
-                    const pinnedNote = pinnedKept > 0
-                        ? ` ${pinnedKept} pinned left in the range (excludePinned is on).`
-                        : "";
+                    // Pins and calls are counted from this read, not from the queue: a pin added after
+                    // the preview was never seen by the setting, and a call is never queued.
+                    const keptParts: string[] = [];
+                    if (pinnedKept > 0) keptParts.push(`${pinnedKept} pinned left in the range (excludePinned is on)`);
+                    if (callsRemaining > 0) keptParts.push(`${callsRemaining} of your call messages left in the range (not queued for deletion)`);
+                    const keptNote = keptParts.length > 0 ? ` ${keptParts.join("; ")}.` : "";
 
                     const reasons: string[] = [];
                     if (refusedLeft > 0) reasons.push(`${refusedLeft} answered with a 4xx (never retried)`);
@@ -627,15 +661,15 @@ async function runDeletion(queue: ChatMessage[], context: RunContext, me: string
                     state.phase = "done";
                     state.note = `Finished — ${progress()}. `
                         + (stillThere.length === 0
-                            ? (pinnedKept > 0
-                                ? `Verified: nothing left to delete — ${pinnedKept} pinned left in the range (excludePinned is on).`
+                            ? (keptParts.length > 0
+                                ? `Verified: nothing left to delete — ${keptParts.join("; ")}.`
                                 : "Verified: nothing of yours matching that range is left.")
                             : `Verified: ${stillThere.length} of your matching messages still in the range — `
                                 + (cappedRun
                                     ? `${queue.length} of ${intended} were queued; the cap stopped this run, preview again for the rest.`
                                         + (reasons.length > 0 ? ` Also: ${reasons.join("; ")}.` : "")
-                                        + pinnedNote
-                                    : `${reasons.join("; ")}.${pinnedNote}`)
+                                        + keptNote
+                                    : `${reasons.join("; ")}.${keptNote}`)
                         );
                 }
             } catch (error: any) {
@@ -714,12 +748,15 @@ async function startCore(): Promise<void> {
     }
 
     const queue = buildDeleteQueue(scanned.messages, scanned.filters, me, context.limit, context.excludePinned);
+    let skipped = skippedInScan();
+    state.skipped = skipped;
+    state.total = totalInScan();
 
     if (queue.length === 0) {
         gate.reset();
         armStamp = null;
         state.queued = 0;
-        state.note = "Nothing to delete in this range.";
+        state.note = "Nothing to delete in this range." + skippedCallsText(skipped);
         notify();
         return;
     }
@@ -760,7 +797,7 @@ async function startCore(): Promise<void> {
             armStamp = lastOffer.stamp;
             state.queued = queue.length;
             state.note = `${changedNote}Backup offered (${state.total} messages in the whole range) — save both dialogs `
-                + `if you have not, then press Start again to delete ${queue.length} of your messages${capNote}.`;
+                + `if you have not, then press Start again to delete ${queue.length} of your messages${capNote}.${skippedCallsText(skipped)}`;
             notify();
             return;
         }
@@ -786,12 +823,15 @@ async function startCore(): Promise<void> {
         }
 
         const freshQueue = buildDeleteQueue(scanned.messages, scanned.filters, me, context.limit, context.excludePinned);
+        skipped = skippedInScan();
+        state.skipped = skipped;
+        state.total = totalInScan();
 
         if (freshQueue.length === 0) {
             gate.reset();
             armStamp = null;
             state.queued = 0;
-            state.note = "Nothing to delete in this range.";
+            state.note = "Nothing to delete in this range." + skippedCallsText(skipped);
             notify();
             return;
         }
@@ -805,7 +845,7 @@ async function startCore(): Promise<void> {
         state.queued = freshQueue.length;
         lastOffer = { stamp: armStamp, at: Date.now() };
         state.note = `${changedNote}Backup offered (${state.total} messages in the whole range). Save both dialogs, `
-            + `then press Start again to delete ${freshQueue.length} of your messages${capNote}.`;
+            + `then press Start again to delete ${freshQueue.length} of your messages${capNote}.${skippedCallsText(skipped)}`;
         notify();
         return;
     }
@@ -813,7 +853,7 @@ async function startCore(): Promise<void> {
     armStamp = context;
     state.queued = queue.length;
     state.note = `${changedNote}About to delete ${queue.length} of your messages${capNote}. `
-        + `Deletion is permanent. Press Start again to confirm.`;
+        + `Deletion is permanent. Press Start again to confirm.${skippedCallsText(skipped)}`;
     notify();
 }
 

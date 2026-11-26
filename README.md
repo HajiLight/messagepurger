@@ -8,7 +8,7 @@ A [Vencord](https://vencord.dev) userplugin that deletes **your own** messages i
 > [!CAUTION]
 > **Use at your own risk:** Automating bulk message deletion on a user account is treated as automation/self-botting under Discord's Terms of Service and can result in **account suspension or IP bans**. Built-in pacing, the `401`/`403` circuit breaker, and captcha abort reduce accidental bursts, **but cannot guarantee your account will not be flagged or banned**. Not affiliated with or endorsed by Discord or Vencord.
 
-> **v1.0.0** — tested with Discord Stable `1.0.9269` and Vencord `1.15.19`. Deletion touches only your own messages and requires a two-step confirmation.
+> **v1.0.1** — tested with Discord Stable `1.0.9269` and Vencord `1.15.19`. Deletion touches only your own messages and requires a two-step confirmation.
 
 ## Demo
 
@@ -21,11 +21,11 @@ A [Vencord](https://vencord.dev) userplugin that deletes **your own** messages i
 | Behaviour | Rule |
 | --- | --- |
 | **Targets** | 1:1 DMs (by user ID or channel ID; a user ID resolves only if the DM already exists) and server text channels; group DMs and threads are explicitly refused |
-| **Deletion scope** | Only your own messages; no message-type filter. `429` is retried up to 3×; other `4xx` are final (`403` counts as refused, `404` as already gone) |
+| **Deletion scope** | Only your own messages. Voice and video call records (Discord message type `3`, or a message carrying a call marker) are skipped without a delete request and reported separately; they remain in the chat. Everything else is attempted regardless of type. See [docs/message-types.md](docs/message-types.md) for the measurement. `429` is retried up to 3×; other `4xx` are final (`403` counts as refused, `404` as already gone) |
 | **Permanent & visible** | Deletions are irreversible and vanish for everyone in the chat |
 | **Two-step confirmation** | First `Start` arms and prints the exact delete count; second `Start` confirms (`1.5 s` anti-double-click guard; `60 s` window stamped to chat, cap, mode, filters, and `excludePinned`) |
 | **Pinned messages** | Deleted by default; `excludePinned` skips pins **as read at preview time** — a pin added after the preview is still deleted, a pin removed after it is still skipped. Backups keep pins only if they pass the text/attachment filters |
-| **Post-run verification** | `verifyAfterRun` (default `true`) re-reads the range to verify leftovers and reports withheld caps or kept pins; transport/5xx errors retry once before verification |
+| **Post-run verification** | `verifyAfterRun` (default `true`) re-reads the range to verify leftovers and reports withheld caps, kept pins and call records left in the range; transport/5xx errors retry once before verification |
 | **Circuit breakers** | Aborts immediately on HTTP `400` `captcha_key` or 3 consecutive `401`/`403` responses; `Stop` cancels sleeps and stops paging after the in-flight page |
 
 ## Backup
@@ -34,7 +34,7 @@ Because reading history is required anyway, **Export JSON + TXT** (or `Export on
 
 - **Formats:** `messages-<chat>-<range>.jsonl` (structured per-message JSON including attachment URLs and embed count) and `messages-<chat>-<range>.txt` (readable log without URLs).
 - **Both authors, filtered snapshot:** backups contain every message that matches the filters from both sides, as read at preview time; only deletion filters by author. They are not a live archive: later messages and edits are absent.
-- **Known limits:** Discord opens two OS Save dialogs (the panel reports **offered**, not saved — verify both files exist before confirming deletion). Exports have no channel-ID field, but JSONL attachment URLs embed channel and message IDs — treat exports as private. Also omitted: filter metadata, embed bodies, stickers, polls, reactions, and binary attachments (Discord CDN attachment URLs expire in ~24 hours).
+- **Known limits:** Discord opens two OS Save dialogs (the panel reports **offered**, not saved — verify both files exist before confirming deletion). Exports have no channel-ID field, but JSONL attachment URLs embed channel and message IDs — treat exports as private. Also omitted: filter metadata, embed bodies, stickers, polls, reactions, and binary attachments (Discord CDN attachment URLs expire in ~24 hours). Call records are included as empty-content entries when they pass the filters; their message type is not serialized.
 
 ## Rate limits & defaults
 

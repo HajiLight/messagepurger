@@ -1,6 +1,6 @@
 {
     "name": "messagepurger",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Vencord plugin that deletes your own messages in a private chat or a server text channel — filtered, paced, exportable first.",
     "license": "GPL-3.0-or-later",
     "author": "HajiLight",

@@ -155,6 +155,11 @@ function mapMessage(raw: any): ChatMessage {
             contentType: attachment.content_type
         })),
         embedCount: (raw.embeds ?? []).length,
+        type: typeof raw.type === "number" ? raw.type : 0,
+        hasCall: raw.call
+            && (Array.isArray(raw.call.participants) || typeof raw.call.ended_timestamp === "string")
+            ? true
+            : undefined,
         replyToAuthor: raw.referenced_message?.author?.globalName
             ?? raw.referenced_message?.author?.username,
         pinned: Boolean(raw.pinned)

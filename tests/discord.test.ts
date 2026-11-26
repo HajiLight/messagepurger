@@ -569,11 +569,17 @@ describe("discord adapter", () => {
             expect(messages).toHaveLength(3);
         });
 
-        it("maps the pinned flag and ignores message types", async () => {
+        it("maps the pinned flag, message type and call marker", async () => {
             mockRestAPI.get.mockResolvedValueOnce({
                 body: [
                     { id: "100000000000000004", timestamp: "2024-03-05T12:03:00Z", type: 0, pinned: true },
-                    { id: "100000000000000003", timestamp: "2024-03-05T12:02:00Z", type: 3, pinned: false },
+                    {
+                        id: "100000000000000003",
+                        timestamp: "2024-03-05T12:02:00Z",
+                        type: 3,
+                        pinned: false,
+                        call: { ended_timestamp: "2024-03-05T12:05:00Z", participants: ["123", "456"] }
+                    },
                     { id: "100000000000000002", timestamp: "2024-03-05T12:01:00Z", type: 19 },
                     { id: "100000000000000001", timestamp: "2024-03-05T12:00:00Z", type: "invalid" }
                 ]
@@ -587,6 +593,8 @@ describe("discord adapter", () => {
             });
 
             expect(messages.map(m => m.pinned)).toEqual([true, false, false, false]);
+            expect(messages.map(m => m.type)).toEqual([0, 3, 19, 0]);
+            expect(messages[1].hasCall).toBe(true);
         });
 
         it("aborts immediately when fetchWindow receives HTTP 400 with captcha_key", async () => {

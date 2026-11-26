@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-11-26
+
+### Fixed
+
+- Voice and video call records (Discord message type `3`) are now skipped instead of attempted and
+  are reported separately. They are not counted as deletable leftovers by the after-run
+  verification, which names them explicitly when they remain in the range.
+
 ## [1.0.0] — 2026-11-25
 
 First public release. Tested with Discord Stable `1.0.9269` and Vencord `1.15.19`.

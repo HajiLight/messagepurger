@@ -25,7 +25,7 @@ Node.js 22+ and pnpm are required. `dev.mjs` can also use `$VENCORD_DIR`, `./.ve
 ## Safety & code rules
 
 - Any destructive path must have a matching preview path, manual start, and explicit count confirmation.
-- Never add a message-type allowlist (`isDeletable` checks author and `excludePinned` only). `429` is retried; other `4xx` are final.
+- Keep deletion rules narrow: author, the measured call-record exception (message type `3` or a call marker, reported but never queued), and `excludePinned`. Do not add a blanket message-type allowlist; other message types are attempted. `429` is retried; other `4xx` are final.
 - Transport/5xx failures may retry once at the end of a run; `429` waits for `retry_after` + margin (max 3 retries), and `captcha_key` or 3× consecutive `401`/`403` abort immediately.
 - Explain how Discord API changes were verified (unit tests or live client checks).
 

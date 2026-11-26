@@ -7,6 +7,8 @@
 
 export type AttachmentMode = "any" | "only" | "without";
 
+export const CALL_MESSAGE_TYPE = 3;
+
 /** One message, from either side of the conversation. */
 export interface ChatMessage {
     id: string;
@@ -19,6 +21,10 @@ export interface ChatMessage {
     content: string;
     attachments: AttachmentInfo[];
     embedCount: number;
+    /** Discord message type; 0 is a normal user message. */
+    type?: number;
+    /** True when Discord attached a call record to this message. */
+    hasCall?: boolean;
     /** Author of the message this one replies to, when known. */
     replyToAuthor?: string;
     /** Whether the message is pinned in the channel. */
@@ -140,26 +146,54 @@ export function matchesFilters(message: ChatMessage, filters: PurgeFilters): boo
  * Only the author can delete a message — that is the rule Discord enforces with `403` for anyone
  * else's message in a private chat. Pinned messages are deleted too unless `excludePinned` is on,
  * because a pin is a deliberate marker the user left on a message; they stay in the backup either
- * way. There is deliberately **no** whitelist of message types here: pin notices (type 6) delete
- * with `204`, and if Discord refuses any other type, the run counts it as `failed` without retrying
- * a `4xx`.
+ * way.
+ *
+ * Call entries are the measured exception: after a voice or video call Discord writes a message
+ * with `type: 3`, empty content and a `call` object (author = the account that started it). The
+ * plugin does not attempt to delete them; it reports them separately. The `hasCall` marker is
+ * checked as well as the type, so a missing type mapping cannot silently make a call deletable. Other
+ * message types are still attempted: pin notices (type 6), for example, delete with `204`.
  */
+export function isCallMessage(message: ChatMessage): boolean {
+    return message.type === CALL_MESSAGE_TYPE || message.hasCall === true;
+}
+
 export function isDeletable(message: ChatMessage, selfId: string, excludePinned = false): boolean {
     if (message.authorId !== selfId) return false;
+    if (isCallMessage(message)) return false;
     if (excludePinned && message.pinned) return false;
     return true;
 }
 
-/** Everything that goes into a backup: both sides, oldest first, de-duplicated by id. */
-export function buildBackupSet(messages: readonly ChatMessage[], filters: PurgeFilters): ChatMessage[] {
+/** Deduplicate page repeats; a call copy wins over a contradictory normal copy. */
+function uniqueMessages(messages: readonly ChatMessage[], filters: PurgeFilters): ChatMessage[] {
     const unique = new Map<string, ChatMessage>();
 
     for (const message of messages) {
-        // A page boundary can repeat a message when new ones arrive mid-scan.
-        if (!unique.has(message.id) && matchesFilters(message, filters)) unique.set(message.id, message);
+        if (!matchesFilters(message, filters)) continue;
+        const existing = unique.get(message.id);
+        if (existing === undefined || (!isCallMessage(existing) && isCallMessage(message))) {
+            unique.set(message.id, message);
+        }
     }
 
-    return [...unique.values()].sort((a, b) => a.timestamp - b.timestamp);
+    return [...unique.values()];
+}
+
+/** Count own call entries that match the range: they are shown, but never queued for deletion. */
+export function countCallMessages(
+    messages: readonly ChatMessage[],
+    filters: PurgeFilters,
+    selfId: string
+): number {
+    return uniqueMessages(messages, filters)
+        .filter(message => message.authorId === selfId && isCallMessage(message))
+        .length;
+}
+
+/** Everything that goes into a backup: both sides, oldest first, de-duplicated by id. */
+export function buildBackupSet(messages: readonly ChatMessage[], filters: PurgeFilters): ChatMessage[] {
+    return uniqueMessages(messages, filters).sort((a, b) => a.timestamp - b.timestamp);
 }
 
 /** Everything that may be deleted: the same filters, plus "written by me", oldest first, capped. */
@@ -170,15 +204,9 @@ export function buildDeleteQueue(
     limit: number,
     excludePinned = false
 ): ChatMessage[] {
-    const unique = new Map<string, ChatMessage>();
-
-    for (const message of messages) {
-        // Both conditions come from named rules, so a fix to either cannot miss this call site.
-        if (!isDeletable(message, selfId, excludePinned) || !matchesFilters(message, filters)) continue;
-        if (!unique.has(message.id)) unique.set(message.id, message);
-    }
-
-    const deletable = [...unique.values()].sort((a, b) => a.timestamp - b.timestamp);
+    const deletable = uniqueMessages(messages, filters)
+        .filter(message => isDeletable(message, selfId, excludePinned))
+        .sort((a, b) => a.timestamp - b.timestamp);
 
     return limit > 0 ? deletable.slice(0, limit) : deletable;
 }
